@@ -32,6 +32,8 @@ local hoveredBox = nil
 local selectedBox = nil
 local lastClickTime = 0
 local doubleClickInterval = 0.4
+local needNameInputFocus = false
+local savedMouseX, savedMouseY
 
 -- Variables for smooth camera movement
 local isMovingCamera = false
@@ -43,7 +45,12 @@ local enteringBox = false
 
 -- Variables for naming the box
 local namingBox = nil  -- The box that needs to be named
-local nameInput = { text = "" }  -- SUIT input field for the box name
+nameInput = {
+    text = "",
+    forceFocus = function()
+        nameInput.forcefocus = true
+    end
+}  -- SUIT input field for the box name
 
 local gridSpacing = 100  -- Distance between grid lines
 
@@ -92,7 +99,6 @@ function mainBin.load()
 end
 
 function mainBin.update(dt)
-
     if isMovingCamera then
         movementElapsed = movementElapsed + dt
         local t = math.min(movementElapsed / movementDuration, 1)
@@ -109,9 +115,15 @@ function mainBin.update(dt)
         end
     else
         if namingBox then
+            nameInput.forcefocus = true
+            if nameInput.text ~= "" then
+                nameInput.forcefocus = false
+            end
+
             suit.layout:reset(love.graphics.getWidth() / 2 - 150, love.graphics.getHeight() / 2 - 25)
             suit.Label("Enter box name:", { align = "left" }, suit.layout:row(300, 60))
             suit.Input(nameInput, suit.layout:row())
+            
             if suit.Button("OK", suit.layout:row()).hit or love.keyboard.isDown('return') then
                 if nameInput.text ~= "" then
                     namingBox.name = nameInput.text
@@ -119,6 +131,7 @@ function mainBin.update(dt)
                     nameInput.text = ""
                 end
             end
+            return  -- Early return to prevent other updates
         else
             local locationTextHeight = font3:getHeight()
             local buttonY = 20 + locationTextHeight + 10
@@ -178,10 +191,7 @@ function mainBin.update(dt)
             local gridX, gridY = screenToGrid(mouseX, mouseY, false)
             hoveredBox = findBoxAtPosition(gridX, gridY, getCurrentBoxChildren())
 
-
             -- suit.Input(textInput, screenWidthA - 350, 50, 300, 50)
-
-            golfBallAnimationTimer = golfBallAnimationTimer + dt
         end
     end
 
@@ -216,18 +226,18 @@ function love.mousereleased(x, y, button)
 
     if button == 3 then  -- Middle Mouse Button release stops dragging
         isDragging = false
-    elseif (button == 2 or button == 3) and newBox then  -- Right Mouse Button release finalizes box creation
-        local endX, endY = screenToGrid(x, y)
-        newBox.width = math.abs(endX - startX)
-        newBox.height = math.abs(endY - startY)
-        newBox.x = math.min(startX, endX)
-        newBox.y = math.min(startY, endY)
-
+    elseif (button == 2 or button == 3) and newBox then
+        -- Existing code...
         if newBox.width == 0 or newBox.height == 0 then
             newBox = nil
         else
             table.insert(getCurrentBoxChildren(), newBox)
             namingBox = newBox
+            needNameInputFocus = true  -- Set flag to focus input
+    
+            -- Save current mouse position
+            savedMouseX, savedMouseY = love.mouse.getPosition()
+    
             newBox = nil
         end
     end
@@ -362,7 +372,7 @@ function mainBin.draw()
 
     -- GUI
     love.graphics.setColor(0, 0, 0.1)
-    print(screenWidthA .. ", " .. screenHeightA)
+    -- print(screenWidthA .. ", " .. screenHeightA)
     love.graphics.rectangle("fill", 0, 0, screenWidthA, 100)
 
     love.graphics.setFont(font3)
@@ -592,43 +602,45 @@ end
 
 function love.keypressed(key)
     suit.keypressed(key)
-    if namingBox or isMovingCamera then
+    
+    if namingBox then
+        -- Handle key presses during naming
+        if key == 'escape' then
+            -- Remove the namingBox from the current box's children
+            local children = getCurrentBoxChildren()
+            for i = #children, 1, -1 do
+                if children[i] == namingBox then
+                    table.remove(children, i)
+                    break
+                end
+            end
+            namingBox = nil
+            nameInput.text = ""
+        elseif key == 'return' or key == 'kpenter' then
+            -- Finalize naming if Enter is pressed
+            if nameInput.text ~= "" then
+                namingBox.name = nameInput.text
+                namingBox = nil
+                nameInput.text = ""
+            end
+        end
+        return
+    end
+
+    if isMovingCamera then
         return
     end
 
     if key == "escape" and currentBox then
-        -- Store the box we are exiting from
+        -- Exiting the current box
         currentBox = table.remove(boxStack)
         currentLevel = currentLevel - 1
-
-        -- Start camera movement to center on the current box (parent box)
         startCameraMovementToExitBox()
     elseif key == "]" then
         love.event.quit()
     elseif key == "c" then
         centerX = love.graphics.getWidth() / 2
         centerY = love.graphics.getHeight() / 2
-    elseif key == "r" then
-        vectorTable = {}
-        prevVectorx, prevVectory = 0, 0
-    elseif key == "return" then
-        local savedValue = tonumber(textInput.text)
-
-        if requestedData == 0 then
-            if savedValue ~= nil then
-                saveTable[1] = savedValue
-                textInput.text = ""
-                requestedData = 1
-            end
-        elseif requestedData == 1 then
-            if savedValue ~= nil then
-                saveTable[2] = savedValue
-                textInput.text = ""
-                table.insert(vectorTable, {saveTable[1], saveTable[2]})
-                saveTable = {}
-                requestedData = 0
-            end
-        end 
     end
 end
 

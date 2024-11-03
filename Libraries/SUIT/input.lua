@@ -17,6 +17,10 @@ return function(core, input, ...)
 	w = w or text_width + 6
 	h = h or opt.font:getHeight() + 4
 
+	function input:forceFocus()
+		self.forcefocus = true
+	end
+
 	input.text = input.text or ""
 	input.cursor = math.max(1, math.min(utf8.len(input.text)+1, input.cursor or utf8.len(input.text)+1))
 	-- cursor is position *before* the character (including EOS) i.e. in "hello":
